@@ -1,4 +1,3 @@
-
 'use server';
 
 export type SearchResult = {
@@ -12,7 +11,7 @@ export type SearchResult = {
 };
 
 /**
- * Backup API handler for the second service (no password required).
+ * Backup API handler for the second service.
  * Aggregates multiple records into a single SearchResult.
  */
 async function queryBackupDatabase(query: string): Promise<SearchResult> {
@@ -22,8 +21,7 @@ async function queryBackupDatabase(query: string): Promise<SearchResult> {
     return { error: 'Backup service not configured' };
   }
 
-  // The backup API structure: URL?number=QUERY or similar
-  // Adjusting to common pattern: baseUrl should include the query param key if needed
+  // Determine query parameter based on URL structure
   const apiUrl = baseUrl.includes('?') 
     ? `${baseUrl}&number=${encodeURIComponent(query)}`
     : `${baseUrl}?number=${encodeURIComponent(query)}`;
@@ -38,18 +36,13 @@ async function queryBackupDatabase(query: string): Promise<SearchResult> {
       throw new Error(`Backup API responded with status ${response.status}`);
     }
 
-    const rawText = await response.text();
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (e) {
-      return { raw: rawText, error: 'Invalid JSON from backup service' };
-    }
+    const data = await response.json();
 
-    // Process the specific 2nd API format provided by user
+    // Process the specific records format from the 2nd API
     if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
       const firstRecord = data.records[0];
-      // Aggregate all mobile numbers from all records
+      
+      // Collect all unique mobile numbers from all records
       const allNumbers = Array.from(new Set(
         data.records
           .map((r: any) => r.mobile)
@@ -61,12 +54,12 @@ async function queryBackupDatabase(query: string): Promise<SearchResult> {
         cnic: firstRecord.cnic || '',
         address: firstRecord.address || '',
         numbers: allNumbers,
-        raw: rawText,
+        raw: JSON.stringify(data, null, 2),
         source: 'backup'
       };
     }
 
-    return { raw: rawText, error: 'No records found in backup service' };
+    return { error: 'No records found in backup service' };
   } catch (error: any) {
     return { error: error.message || 'Failed to connect to backup server' };
   }
@@ -77,7 +70,6 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
   const baseUrl = process.env.LEGAL_API_URL;
   
   if (!password || !baseUrl) {
-    // If primary isn't configured, immediately try backup
     return queryBackupDatabase(query);
   }
 
@@ -89,8 +81,9 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
       next: { revalidate: 3600 }
     });
     
-    // If primary fails, fallback to backup instead of returning error immediately
+    // Explicitly handle 500 or any non-OK status by falling back to backup
     if (!response.ok) {
+      console.error(`Primary API Error: ${response.status}`);
       return queryBackupDatabase(query);
     }
 
@@ -99,20 +92,17 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      // If parsing fails, it might be raw text or an error, try backup
-      const backup = await queryBackupDatabase(query);
-      if (!backup.error) return backup;
-      return { raw: rawText };
+      // If primary returns invalid JSON, try backup
+      return queryBackupDatabase(query);
     }
 
     if (data && typeof data === 'object') {
-      // Check if data is actually useful (has a name or CNIC)
+      // If primary returned a valid object but potentially empty data, try backup
       const hasData = data.name || data.cnic || (data.numbers && data.numbers.length > 0);
       
       if (!hasData) {
-        // Primary returned empty results, try backup
         const backup = await queryBackupDatabase(query);
-        if (!backup.error && (backup.name || backup.cnic)) return backup;
+        if (!backup.error) return backup;
       }
 
       return {
@@ -128,7 +118,7 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
     // Fallback if structure is unknown
     return queryBackupDatabase(query);
   } catch (error: any) {
-    // On any connection error to primary, use backup
+    // On any connection error or timeout to primary, use backup
     return queryBackupDatabase(query);
   }
 }
