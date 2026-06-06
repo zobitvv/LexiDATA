@@ -11,20 +11,14 @@ export type SearchResult = {
 };
 
 /**
- * Backup API handler for the second service.
- * Aggregates multiple records into a single SearchResult.
+ * Backup API handler for the SIM Info service.
+ * Aggregates multiple records into a single profile.
  */
 async function queryBackupDatabase(query: string): Promise<SearchResult> {
-  const baseUrl = process.env.BACKUP_API_URL;
+  const baseUrl = process.env.BACKUP_API_URL || 'https://sim-info-api.wasif-ali.workers.dev/?search=';
   
-  if (!baseUrl) {
-    return { error: 'Backup service not configured' };
-  }
-
-  // Determine query parameter based on URL structure
-  const apiUrl = baseUrl.includes('?') 
-    ? `${baseUrl}&number=${encodeURIComponent(query)}`
-    : `${baseUrl}?number=${encodeURIComponent(query)}`;
+  // The backup API expects ?search= as provided in the URL
+  const apiUrl = `${baseUrl}${encodeURIComponent(query)}`;
 
   try {
     const response = await fetch(apiUrl, {
@@ -38,11 +32,11 @@ async function queryBackupDatabase(query: string): Promise<SearchResult> {
 
     const data = await response.json();
 
-    // Process the specific records format from the 2nd API
+    // Process the specific records format: { success: true, records: [...] }
     if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
       const firstRecord = data.records[0];
       
-      // Collect all unique mobile numbers from all records
+      // Collect all unique mobile numbers from all matching records
       const allNumbers = Array.from(new Set(
         data.records
           .map((r: any) => r.mobile)
@@ -69,6 +63,7 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
   const password = process.env.LEGAL_API_PASSWORD;
   const baseUrl = process.env.LEGAL_API_URL;
   
+  // If primary API is not fully configured, immediately use backup
   if (!password || !baseUrl) {
     return queryBackupDatabase(query);
   }
@@ -97,12 +92,13 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
     }
 
     if (data && typeof data === 'object') {
-      // If primary returned a valid object but potentially empty data, try backup
+      // Check if primary returned data. If empty, try backup.
       const hasData = data.name || data.cnic || (data.numbers && data.numbers.length > 0);
       
       if (!hasData) {
-        const backup = await queryBackupDatabase(query);
-        if (!backup.error) return backup;
+        const backupResult = await queryBackupDatabase(query);
+        // Only return backup if it actually found something, otherwise return empty primary result
+        if (!backupResult.error) return backupResult;
       }
 
       return {
@@ -115,10 +111,9 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
       };
     }
 
-    // Fallback if structure is unknown
     return queryBackupDatabase(query);
   } catch (error: any) {
-    // On any connection error or timeout to primary, use backup
+    // On connection failure to primary, use backup
     return queryBackupDatabase(query);
   }
 }
