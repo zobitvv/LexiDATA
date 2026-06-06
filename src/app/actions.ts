@@ -15,8 +15,8 @@ export type SearchResult = {
  * Aggregates multiple records into a single profile.
  */
 async function queryBackupDatabase(query: string): Promise<SearchResult> {
-  // Ensure the base URL is clean without trailing parameters
-  const baseUrl = 'https://sim-info-api.wasif-ali.workers.dev/';
+  // Removing trailing slash to avoid potential routing issues on the worker
+  const baseUrl = 'https://sim-info-api.wasif-ali.workers.dev';
   const params = new URLSearchParams({ search: query });
   const apiUrl = `${baseUrl}?${params.toString()}`;
 
@@ -25,14 +25,14 @@ async function queryBackupDatabase(query: string): Promise<SearchResult> {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'LexiPulse/1.0',
+        'User-Agent': 'LexiPulse/1.1',
       },
-      next: { revalidate: 3600 }
+      cache: 'no-store'
     });
     
     if (!response.ok) {
       if (response.status === 404) {
-        return { error: 'Service endpoint not found (404). Please check the API configuration.' };
+        return { error: 'Backup service route not found (404). The API might have moved.' };
       }
       throw new Error(`Backup API responded with status ${response.status}`);
     }
@@ -86,12 +86,12 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'LexiPulse/1.0',
+        'User-Agent': 'LexiPulse/1.1',
       },
-      next: { revalidate: 3600 }
+      cache: 'no-store'
     });
     
-    // Explicitly handle server errors by falling back to backup
+    // Explicitly handle server errors (like 500) by falling back to backup
     if (!response.ok) {
       console.error(`Primary API Error: ${response.status}`);
       return queryBackupDatabase(query);
