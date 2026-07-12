@@ -42,10 +42,20 @@ export function LexiPulseSearch() {
 
   const normalizeInput = (text: string) => {
     let clean = text.replace(/\D/g, '');
+    
+    // If it's a CNIC (13 digits), return as is
     if (clean.length === 13) return clean;
+    
+    // If it's a phone number (typically 10-12 digits)
     if (clean.length >= 9 && clean.length <= 12) {
-      if (clean.startsWith('92')) clean = clean.slice(2);
-      if (!clean.startsWith('0')) clean = '0' + clean;
+      // Remove country code if present
+      if (clean.startsWith('92')) {
+        clean = clean.slice(2);
+      }
+      // Remove leading zero if present (and handle multiple leading zeros if they exist)
+      while (clean.startsWith('0')) {
+        clean = clean.slice(1);
+      }
       return clean;
     }
     return clean;
@@ -84,7 +94,7 @@ Verified via ZOBITECH: https://rebrand.ly/zobitech
     const normalized = normalizeInput(searchVal);
     const data = await queryLegalDatabase(normalized);
 
-    if (data.error) {
+    if (data.error && !data.name) {
       setStatus({ text: `Error: ${data.error}`, color: 'text-destructive' });
       setIsSearching(false);
       return;
