@@ -15,7 +15,6 @@ export type SearchResult = {
  * Aggregates multiple records into a single profile.
  */
 export async function queryBackupDatabase(query: string): Promise<SearchResult> {
-  // Removing trailing slash to avoid potential routing issues on the worker
   const baseUrl = 'https://sim-info-api.wasif-ali.workers.dev';
   const params = new URLSearchParams({ search: query });
   const apiUrl = `${baseUrl}?${params.toString()}`;
@@ -32,18 +31,16 @@ export async function queryBackupDatabase(query: string): Promise<SearchResult> 
     
     if (!response.ok) {
       if (response.status === 404) {
-        return { error: 'Backup service route not found (404). The API might have moved.' };
+        // Treat 404 as "No records found" so the UI shows the WhatsApp contact card
+        return { error: 'No records found', name: '', source: 'backup' };
       }
       throw new Error(`Backup API responded with status ${response.status}`);
     }
 
     const data = await response.json();
 
-    // Process the specific records format: { success: true, records: [...] }
     if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
       const firstRecord = data.records[0];
-      
-      // Collect all unique mobile numbers from all matching records
       const allNumbers = Array.from(new Set(
         data.records
           .map((r: any) => r.mobile)
@@ -60,9 +57,9 @@ export async function queryBackupDatabase(query: string): Promise<SearchResult> 
       };
     }
 
-    return { error: 'No records found in backup service for this query.' };
+    return { error: 'No records found', name: '', source: 'backup' };
   } catch (error: any) {
-    return { error: error.message || 'Failed to connect to backup server' };
+    return { error: error.message || 'Failed to connect to backup server', name: '', source: 'backup' };
   }
 }
 
@@ -70,7 +67,6 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
   const password = process.env.LEGAL_API_PASSWORD;
   const baseUrl = process.env.LEGAL_API_URL;
   
-  // If primary API is not configured, immediately use backup
   if (!password || !baseUrl) {
     return queryBackupDatabase(query);
   }
@@ -91,9 +87,7 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
       cache: 'no-store'
     });
     
-    // Explicitly handle server errors (like 500) by falling back to backup
     if (!response.ok) {
-      console.error(`Primary API Error: ${response.status}`);
       return queryBackupDatabase(query);
     }
 
@@ -102,18 +96,14 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
     try {
       data = JSON.parse(rawText);
     } catch (e) {
-      // If primary returns invalid JSON, try backup
       return queryBackupDatabase(query);
     }
 
     if (data && typeof data === 'object') {
-      // Check if primary returned actual content
       const hasData = data.name || data.cnic || (data.numbers && data.numbers.length > 0);
       
       if (!hasData) {
-        const backupResult = await queryBackupDatabase(query);
-        // Only return backup if it actually found something, otherwise return the empty primary result
-        if (!backupResult.error) return backupResult;
+        return queryBackupDatabase(query);
       }
 
       return {
@@ -128,7 +118,6 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
 
     return queryBackupDatabase(query);
   } catch (error: any) {
-    // On connection failure to primary, use backup
     return queryBackupDatabase(query);
   }
 }

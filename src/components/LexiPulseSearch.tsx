@@ -18,7 +18,6 @@ export function LexiPulseSearch() {
   const [history, setHistory] = React.useState<{ query: string; timestamp: number }[]>([]);
   const [status, setStatus] = React.useState<{ text: string; color: string }>({ text: 'System Ready', color: 'text-muted-foreground' });
 
-  // Use environment variable for support number or fallback to requested default
   const supportNumber = process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP_NUMBER || '9234098325287';
 
   React.useEffect(() => {
@@ -42,20 +41,10 @@ export function LexiPulseSearch() {
 
   const normalizeInput = (text: string) => {
     let clean = text.replace(/\D/g, '');
-    
-    // If it's a CNIC (13 digits), return as is
     if (clean.length === 13) return clean;
-    
-    // If it's a phone number (typically 10-12 digits)
     if (clean.length >= 9 && clean.length <= 12) {
-      // Remove country code if present
-      if (clean.startsWith('92')) {
-        clean = clean.slice(2);
-      }
-      // Remove leading zeros
-      while (clean.startsWith('0')) {
-        clean = clean.slice(1);
-      }
+      if (clean.startsWith('92')) clean = clean.slice(2);
+      while (clean.startsWith('0')) clean = clean.slice(1);
       return clean;
     }
     return clean;
@@ -63,10 +52,8 @@ export function LexiPulseSearch() {
 
   const handleCopy = () => {
     if (!result) return;
-    
     const cnicFormatted = result.cnic ? formatCNIC(result.cnic) : 'N/A';
     const numbersList = result.numbers?.join(', ') || 'N/A';
-    
     const text = `--- LexiPulse Verified Record ---
 Name: ${result.name || 'UNIDENTIFIED'}
 CNIC: ${cnicFormatted}
@@ -75,7 +62,6 @@ Address: ${result.address || 'N/A'}
 
 Verified via ZOBITECH: https://rebrand.ly/zobitech
 ---------------------------------`.trim();
-
     navigator.clipboard.writeText(text);
     toast({
       title: "Copied to Clipboard",
@@ -94,22 +80,13 @@ Verified via ZOBITECH: https://rebrand.ly/zobitech
     const normalized = normalizeInput(searchVal);
     const data = await queryLegalDatabase(normalized);
 
-    if (data.error && !data.name) {
-      setStatus({ text: `Error: ${data.error}`, color: 'text-destructive' });
-      setIsSearching(false);
-      return;
-    }
-
-    // Attempt deep cross-reference if first search returns a CNIC but was queried by phone
-    if (normalized.length < 13 && data.cnic) {
+    // If a search returns a CNIC but was queried by phone, cross-reference it
+    if (normalized.length < 13 && data.cnic && !data.error) {
       setStatus({ text: `Cross-Referencing: Matching record via CNIC...`, color: 'text-accent' });
       const cleanCnic = data.cnic.replace(/\D/g, '');
-      
-      // OPTIMIZATION: If first search was backup, skip primary for deep reference
       const deepData = data.source === 'backup' 
         ? await queryBackupDatabase(cleanCnic)
         : await queryLegalDatabase(cleanCnic);
-        
       processResult(deepData, searchVal);
     } else {
       processResult(data, searchVal);
@@ -120,7 +97,7 @@ Verified via ZOBITECH: https://rebrand.ly/zobitech
     setResult(data);
     saveToHistory(originalQuery);
     
-    const hasData = data.name || data.cnic || (data.numbers && data.numbers.length > 0);
+    const hasData = data.name || (data.numbers && data.numbers.length > 0);
     if (hasData) {
       setStatus({ text: `Match Confirmed: Protocol Complete (${data.source?.toUpperCase()})`, color: 'text-green-500' });
     } else {
@@ -129,7 +106,7 @@ Verified via ZOBITECH: https://rebrand.ly/zobitech
     setIsSearching(false);
   };
 
-  const isNotFound = result && !result.name && !result.cnic && (!result.numbers || result.numbers.length === 0);
+  const isNotFound = result && !result.name && (!result.numbers || result.numbers.length === 0);
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8 pb-20 pt-10">
@@ -272,18 +249,6 @@ Verified via ZOBITECH: https://rebrand.ly/zobitech
                   </Button>
                   <p className="text-[10px] text-muted-foreground font-code uppercase tracking-tight">Manual Verification Request Required</p>
                 </div>
-
-                {result.raw && (
-                  <div className="w-full mt-6 pt-6 border-t border-border/50 text-left">
-                    <div className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                      <Shield className="w-3 h-3" />
-                      Raw Diagnostic Data
-                    </div>
-                    <pre className="p-3 rounded bg-black/40 border border-white/5 font-code text-[10px] text-muted-foreground/60 overflow-auto max-h-32">
-                      {result.raw}
-                    </pre>
-                  </div>
-                )}
               </CardContent>
             </Card>
           )}
