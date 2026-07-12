@@ -14,7 +14,7 @@ export type SearchResult = {
  * Backup API handler for the SIM Info service.
  * Aggregates multiple records into a single profile.
  */
-async function queryBackupDatabase(query: string): Promise<SearchResult> {
+export async function queryBackupDatabase(query: string): Promise<SearchResult> {
   // Removing trailing slash to avoid potential routing issues on the worker
   const baseUrl = 'https://sim-info-api.wasif-ali.workers.dev';
   const params = new URLSearchParams({ search: query });

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { queryLegalDatabase, type SearchResult } from '@/app/actions';
+import { queryLegalDatabase, queryBackupDatabase, type SearchResult } from '@/app/actions';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -52,7 +52,7 @@ export function LexiPulseSearch() {
       if (clean.startsWith('92')) {
         clean = clean.slice(2);
       }
-      // Remove leading zero if present (and handle multiple leading zeros if they exist)
+      // Remove leading zeros
       while (clean.startsWith('0')) {
         clean = clean.slice(1);
       }
@@ -104,7 +104,12 @@ Verified via ZOBITECH: https://rebrand.ly/zobitech
     if (normalized.length < 13 && data.cnic) {
       setStatus({ text: `Cross-Referencing: Matching record via CNIC...`, color: 'text-accent' });
       const cleanCnic = data.cnic.replace(/\D/g, '');
-      const deepData = await queryLegalDatabase(cleanCnic);
+      
+      // OPTIMIZATION: If first search was backup, skip primary for deep reference
+      const deepData = data.source === 'backup' 
+        ? await queryBackupDatabase(cleanCnic)
+        : await queryLegalDatabase(cleanCnic);
+        
       processResult(deepData, searchVal);
     } else {
       processResult(data, searchVal);
@@ -117,7 +122,7 @@ Verified via ZOBITECH: https://rebrand.ly/zobitech
     
     const hasData = data.name || data.cnic || (data.numbers && data.numbers.length > 0);
     if (hasData) {
-      setStatus({ text: 'Match Confirmed: Protocol Complete', color: 'text-green-500' });
+      setStatus({ text: `Match Confirmed: Protocol Complete (${data.source?.toUpperCase()})`, color: 'text-green-500' });
     } else {
       setStatus({ text: 'No Match Found: Subject unidentified', color: 'text-orange-500' });
     }
