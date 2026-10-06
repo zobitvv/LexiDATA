@@ -60,7 +60,7 @@ CNIC: ${cnicFormatted}
 Contact: ${numbersList}
 Address: ${result.address || 'N/A'}
 
-	Verified via ZOBITECH: https://zobitech.vercel.app
+Verified via ZOBITECH: https://zobitech.vercel.app
 ---------------------------------`.trim();
     navigator.clipboard.writeText(text);
     toast({
