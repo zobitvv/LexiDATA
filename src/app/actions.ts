@@ -10,6 +10,40 @@ export type SearchResult = {
   source?: 'primary' | 'backup';
 };
 
+type ApiRecord = {
+  name?: string;
+  mobile?: string;
+  cnic?: string;
+  address?: string;
+};
+
+type RecordsResponse = {
+  success?: boolean;
+  records?: ApiRecord[];
+};
+
+function normalizeRecordsResponse(data: RecordsResponse, rawText: string): SearchResult {
+  if (!data?.success || !Array.isArray(data.records) || data.records.length === 0) {
+    return { error: 'No records found', name: '', raw: rawText, source: 'primary' };
+  }
+
+  const firstRecord = data.records[0];
+  const numbers = Array.from(new Set(
+    data.records
+      .map((record) => record.mobile?.trim())
+      .filter((mobile): mobile is string => Boolean(mobile))
+  ));
+
+  return {
+    name: firstRecord.name || '',
+    cnic: firstRecord.cnic || '',
+    address: firstRecord.address || '',
+    numbers,
+    raw: rawText,
+    source: 'primary',
+  };
+}
+
 /**
  * Backup API handler for the SIM Info service.
  * Aggregates multiple records into a single profile.
@@ -64,18 +98,21 @@ export async function queryBackupDatabase(query: string): Promise<SearchResult> 
 }
 
 export async function queryLegalDatabase(query: string): Promise<SearchResult> {
-  const password = process.env.LEGAL_API_PASSWORD;
+  const apiKey = process.env.LEGAL_API_KEY || process.env.Legal_API_Key;
   const baseUrl = process.env.LEGAL_API_URL;
-  
-  if (!password || !baseUrl) {
+
+  // The legal API uses an API key and does not require a password.
+  if (!apiKey || !baseUrl) {
     return queryBackupDatabase(query);
   }
 
-  const params = new URLSearchParams({ 
-    password: password,
-    number: query 
+  const params = new URLSearchParams({
+    number: query,
+    api_key: apiKey,
   });
-  const apiUrl = `${baseUrl}?${params.toString()}`;
+  const apiUrl = baseUrl.includes('?')
+    ? `${baseUrl}&${params.toString()}`
+    : `${baseUrl}?${params.toString()}`;
 
   try {
     const response = await fetch(apiUrl, {
@@ -83,41 +120,30 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'LexiPulse/1.1',
+        'Authorization': `Bearer ${apiKey}`,
+        'X-API-Key': apiKey,
       },
-      cache: 'no-store'
+      cache: 'no-store',
     });
-    
+
     if (!response.ok) {
       return queryBackupDatabase(query);
     }
 
     const rawText = await response.text();
-    let data;
+    let data: RecordsResponse;
     try {
-      data = JSON.parse(rawText);
-    } catch (e) {
+      data = JSON.parse(rawText) as RecordsResponse;
+    } catch {
       return queryBackupDatabase(query);
     }
 
-    if (data && typeof data === 'object') {
-      const hasData = data.name || data.cnic || (data.numbers && data.numbers.length > 0);
-      
-      if (!hasData) {
-        return queryBackupDatabase(query);
-      }
-
-      return {
-        name: data.name || '',
-        cnic: data.cnic || '',
-        address: data.address || '',
-        numbers: data.numbers || [],
-        raw: rawText,
-        source: 'primary'
-      };
+    const result = normalizeRecordsResponse(data, rawText);
+    if (result.error) {
+      return queryBackupDatabase(query);
     }
-
-    return queryBackupDatabase(query);
-  } catch (error: any) {
+    return result;
+  } catch {
     return queryBackupDatabase(query);
   }
 }
