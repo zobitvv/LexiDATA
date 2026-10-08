@@ -99,7 +99,7 @@ export async function queryBackupDatabase(query: string): Promise<SearchResult> 
 
 export async function queryLegalDatabase(query: string): Promise<SearchResult> {
   const apiKey = process.env.LEGAL_API_KEY || process.env.Legal_API_Key;
-  const baseUrl = process.env.LEGAL_API_URL;
+  const baseUrl = process.env.LEGAL_API_URL || 'https://sim-info-api.wasif-ali.workers.dev';
 
   // The legal API uses an API key and does not require a password.
   if (!apiKey || !baseUrl) {
@@ -107,6 +107,7 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
   }
 
   const params = new URLSearchParams({
+    search: query,
     number: query,
     api_key: apiKey,
   });
