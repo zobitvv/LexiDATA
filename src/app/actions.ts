@@ -98,13 +98,7 @@ export async function queryBackupDatabase(query: string): Promise<SearchResult> 
 }
 
 export async function queryLegalDatabase(query: string): Promise<SearchResult> {
-  const apiKey = process.env.LEGAL_API_KEY || process.env.Legal_API_Key;
   const baseUrl = process.env.LEGAL_API_URL || 'https://wasifali.biz.id/public_apis/sim-info-api.php';
-
-  // The legal API uses an API key and does not require a password.
-  if (!apiKey || !baseUrl) {
-    return queryBackupDatabase(query);
-  }
 
   const params = new URLSearchParams({
     search: query,
@@ -120,8 +114,6 @@ export async function queryLegalDatabase(query: string): Promise<SearchResult> {
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'LexiPulse/1.1',
-        'Authorization': `Bearer ${apiKey}`,
-        'X-API-Key': apiKey,
       },
       cache: 'no-store',
     });
